@@ -64,6 +64,8 @@
   const daysTotal = () => Math.round(B().months * 30.4375);
   const rankIdxAt = (w, T) => { const f = w / T; return f < .111 ? 0 : f < .444 ? 1 : f < .778 ? 2 : 3; };
   const rankLabel = () => (B().id === 'civil' ? CIVIL_PHASE : RANK_NAMES)[S.rankIdx];
+  /* 자대 배치 전에는 이병이 아니라 훈련병(사회복무는 교육생) */
+  const rankText = () => (S.phase === 'train' ? (B().id === 'civil' ? '교육생' : '훈련병') : rankLabel());
   function dateAt(week) { const m = S.startMonth + Math.floor(week * 7 / 30.4375); return { y: S.startYear + Math.floor(m / 12), m: m % 12 }; }
   function seasonOf(m) { return m >= 2 && m <= 4 ? 'spring' : m >= 5 && m <= 7 ? 'summer' : m >= 8 && m <= 10 ? 'autumn' : 'winter'; }
   function refresh() {
@@ -82,7 +84,7 @@
       serial: '26-' + ri(70000000, 79999999), startMonth: ri(0, 11), startYear: new Date().getFullYear(), shirt: ri(0, 4),
       stats: Object.assign({ body: 50, mind: 56, rep: 48, bond: 48, skill: 42 }, {}),
       money: major.money || 0, leave: 0, gf, gfStart: gf, gfLove: gf ? ri(50, 80) : 0, week: 0, phase: 'intake',
-      fit: null, branch: null, unitId: null, cultureId: null, bossId: null, probs: {}, luck: 0, tickets: 1,
+      fit: null, branch: null, unitId: null, cultureId: null, bossId: null, probs: {}, luck: 0, rerolls: 0,
       flags: {}, seen: {}, log: [], highlights: [], lastLeaveWeek: -99, cool: 0, trainWeeks: 0, totalWeeks: 0, sched: {}, drift: {},
       month: 0, rankIdx: 0, daysLeft: 0, season: 'spring', tags: [],
     };
@@ -166,9 +168,8 @@
         if (info.rar.k === 'SSR' || info.rar.k === 'UR' || info.good) confetti();
         bAcc.textContent = cfg.acceptLabel ? cfg.acceptLabel(res) : '이대로 간다 ▶';
         bAcc.classList.remove('hidden');
-        if (cfg.canReroll && S.tickets > 0) { bRe.textContent = `🎫 다시 뽑기 (${S.tickets}장)`; bRe.classList.remove('hidden'); }
+        if (!cfg.instant && !cfg.noReroll) { bRe.textContent = S.rerolls ? `🔄 다시 뽑기 (${S.rerolls}번 돌림)` : '🔄 다시 뽑기'; bRe.classList.remove('hidden'); }
         busy = false;
-        if (G.auto) { await sleep(1500); if (!busy && !accepted) accept(); }
       }
       function accept() {
         if (accepted || busy) return;
@@ -177,11 +178,11 @@
         G.inGacha = false; resolve(res);
       }
       function reroll() {
-        if (busy || accepted || S.tickets < 1) return;
-        S.tickets--; updateWallet(); spin();
+        if (busy || accepted) return;
+        S.rerolls = (S.rerolls || 0) + 1; spin(); // 뽑기는 횟수 제한 없이 다시 돌릴 수 있다
       }
       bRoll.onclick = spin; bAcc.onclick = accept; bRe.onclick = reroll;
-      if (cfg.instant || G.auto) setTimeout(spin, cfg.instant ? 150 : 700);
+      if (cfg.instant) setTimeout(spin, 150); // 안내 카드만 자동으로 열리고, 뽑기와 수락은 항상 직접 누른다
     });
   }
 
@@ -224,7 +225,7 @@
     const pool = BRANCH_ROLL.map(id => BRANCH[id]);
     const b = await gacha({
       step: 'STEP 2 · 군종 배정', title: '군종 뽑기', sub: '원래는 지원과 추첨이지만, 여기서는 100% 운입니다.',
-      labels: pool.map(x => x.name), canReroll: true,
+      labels: pool.map(x => x.name),
       roll: () => (window.__forceBranch ? BRANCH[window.__forceBranch] : wpick(pool)),
       reveal: x => {
         const p = probOf(pool, x), rar = rarityOf(p);
@@ -252,7 +253,7 @@
     const wf = u => u.w * unitBoost(u);
     const unit = await gacha({
       step: 'STEP 3 · 자대 배치', title: S.branch === 'civil' ? '근무지 뽑기' : '자대·보직 뽑기', sub: DRAW_SUB[S.branch] || '수료를 마치고, 드디어 배치 명단이 발표됩니다.',
-      labels: pool.map(u => u.name), canReroll: true,
+      labels: pool.map(u => u.name),
       roll: () => wpick(pool, wf),
       reveal: u => {
         const p = probOf(pool, u, wf), rar = rarityOf(p), boosted = unitBoost(u) > 1;
@@ -322,7 +323,7 @@
     }).join('');
   }
   function addLog(text, hl) {
-    S.log.unshift({ w: S.week, r: S.branch ? rankLabel() : '', t: text, hl: !!hl });
+    S.log.unshift({ w: S.week, r: S.branch ? rankText() : '', t: text, hl: !!hl });
     if (S.log.length > 160) S.log.length = 160;
     renderLog();
   }
@@ -342,9 +343,11 @@
     const pool = EVENTS.filter(eligible);
     if (!pool.length) return null;
     const prio = pool.filter(e => e.w >= 50);
-    if (prio.length) return prio[0];
+    if (prio.length) return prio.sort((a, b) => b.w - a.w)[0]; // 건강·징계 같은 큰 일이 휴가 안내보다 먼저
     if (rand() > .4) return null;
-    return wpick(pool);
+    // 사고를 한 번이라도 낸 사람은 또 사고를 치기 쉽다(m_ 이벤트 가중치 상승)
+    const prone = (S.flags.incidents || 0) >= 1;
+    return wpick(pool, e => e.w * (/^m_/.test(e.id) ? (prone ? 13 : 2.2) : 1));
   }
 
   /* 오버레이 장면 */
@@ -378,7 +381,7 @@
     const box = $('f-choices'); box.innerHTML = '';
     (v.choices || []).forEach(c => {
       const b = document.createElement('button');
-      b.className = 'choice' + (c.risky ? ' risky' : '') + (c.cont ? ' cont' : '');
+      b.className = 'choice' + (c.risky ? ' risky' : '') + (c.cont ? ' cont' : '') + (c.danger ? ' danger' : '');
       b.innerHTML = `<b>${c.label}</b>${c.risky ? '<small>도전</small>' : ''}`;
       b.onclick = () => { SFX.init(); SFX.click(); c.fn(); };
       box.appendChild(b);
@@ -396,6 +399,8 @@
     const title = val(ev.title, S), text = val(ev.text, S);
     if (ev.auto) {
       applyFx(ev.fx);
+      if (ev.inc) addInc(ev.inc);
+      if (ev.set) Object.assign(S.flags, ev.set);
       if (ev.flag) S.flags[ev.flag] = true;
       if (typeof ev.hl === 'string') addHighlight(ev.hl);
       if (ev.onShow) ev.onShow(S);
@@ -408,10 +413,15 @@
     if (!G.auto) G.skipping = false;
     renderFocus({
       tag: tagFor(ev), title, text, kind: 'choice',
-      choices: choices.map(c => ({ label: c.t, risky: !!c.p, fn: () => choose(ev, c) })),
+      choices: choices.map(c => ({ label: c.t, risky: !!c.p, danger: !!c.endEarly, fn: () => choose(ev, c) })),
     });
-    scheduleAuto(() => { const c = pick(choices); choose(ev, c); }, 1500);
+    scheduleAuto(() => { const safe = choices.filter(c => !c.endEarly); choose(ev, pick(safe.length ? safe : choices)); }, 1500); // 자동 결정은 조기 전역 같은 큰 결정은 대신 내리지 않는다
     return true;
+  }
+  /* 사고 누적: 쌓이면 중대장 면담 → 군기교육 → 의무조사로 이어진다 */
+  function addInc(n) {
+    S.flags.incidents = Math.max(0, (S.flags.incidents || 0) + n);
+    if (n > 0) S.flags.incTotal = (S.flags.incTotal || 0) + n;
   }
   function scheduleAuto(fn, ms) {
     clearTimeout(G.autoTimer);
@@ -428,6 +438,8 @@
     if (ev.flag) S.flags[ev.flag] = true;
     if (ch.set) Object.assign(S.flags, ch.set);
     if (out.set) Object.assign(S.flags, out.set);
+    if (out.inc) addInc(out.inc);
+    if (ch.endEarly) G.queue.push({ type: 'endEarly', kind: ch.endEarly });
     const hl = out.hl || ch.hl;
     if (hl) addHighlight(hl);
     if (ev.onChoose) ev.onChoose(S, ch);
@@ -536,7 +548,7 @@
       title: s => (s.branch === 'civil' ? '교육 수료' : '수료식'),
       text: s => (s.branch === 'civil'
         ? '기본 교육이 끝났다. 이제 근무지 배정 결과가 발표된다.'
-        : `${BRANCH[s.branch].trainName}에서의 훈련이 끝났다. 수료식 날에는 가족과 만나 짧은 면회 시간도 허락된다. 그리고 곧, 자대 배치 결과가 발표된다.`),
+        : `${BRANCH[s.branch].trainName}에서의 훈련이 끝났다. 수료식 날에는 가족과 만나 짧은 면회 시간도 허락된다. 훈련병 꼬리표를 떼고 이병 계급장을 다는 날, 곧 자대 배치 결과가 발표된다.`),
       fx: { mind: 4, rep: 2 }, result: '',
     },
     /* 신병위로휴가(신병위로외박): 정기휴가 일수와 별개의 3박 4일 */
@@ -655,6 +667,8 @@
           addLog(`${U().place} ${U().name}(으)로 배치. ${C().name}, ${BO().name}.`, true);
         } else if (q.type === 'end') {
           finishRun(); stop = true;
+        } else if (q.type === 'endEarly') {
+          finishEarly(q.kind); stop = true;
         }
       }
     } finally { G.busy = false; }
@@ -690,11 +704,10 @@
   function updateWallet() {
     $('w-money').textContent = Math.round(S.money) + '만원';
     $('w-leave').textContent = Math.floor(S.leave) + '일';
-    $('w-ticket').textContent = '🎫 ' + S.tickets;
   }
   function renderTop() {
     refresh();
-    const t = S.phase === 'intake' ? '병역판정검사' : S.phase === 'train' ? `훈련 ${Math.min(S.week + 1, S.trainWeeks)}주차` : rankLabel();
+    const t = S.phase === 'intake' ? '병역판정검사' : S.phase === 'train' ? `${rankText()} ${Math.min(S.week + 1, S.trainWeeks)}주차` : rankLabel();
     $('top-rank').textContent = t;
     const dt = dateAt(S.week);
     $('top-date').textContent = `${dt.y}년 ${dt.m + 1}월` + (S.branch ? ` · ${B().name}` : '');
@@ -714,7 +727,7 @@
     $('id-serial').textContent = S.serial;
     $('id-name').textContent = S.name;
     $('id-unit').textContent = S.branch ? (S.unitId ? `${B().name} · ${U().name}` : `${B().name} (배치 전)`) : '미정';
-    $('id-rank').textContent = S.branch ? (S.phase === 'train' ? '훈련병' : rankLabel()) : '—';
+    $('id-rank').textContent = S.branch ? rankText() : '—';
     const d0 = dateAt(0);
     $('id-enlist').textContent = `${d0.y}.${String(d0.m + 1).padStart(2, '0')}`;
     $('id-fit').textContent = S.fit ? `${S.fit.name} · ${S.fit.label}` : '검사 전';
@@ -738,7 +751,7 @@
      진행 시작
      ============================================================ */
   async function startRun(name) {
-    clearTimeout(G.timer); G.queue = []; G.pending = null; G.ovl = null; G.paused = false; G.skipping = false; G.running = true;
+    clearTimeout(G.timer); G.queue = []; G.pending = null; G.ovl = null; G.paused = false; G.skipping = false; G.running = true; G.auto = false;
     S = newRun(name); applyMajorMods();
     Store.del(SAVE_KEY);
     enterGameUI();
@@ -768,7 +781,7 @@
   function resumeRun() {
     const sv = Store.get(SAVE_KEY, null);
     if (!sv) return;
-    S = sv; G.queue = []; G.pending = null; G.ovl = null; G.paused = false; G.skipping = false; G.running = true;
+    S = sv; G.queue = []; G.pending = null; G.ovl = null; G.paused = false; G.skipping = false; G.running = true; G.auto = false;
     enterGameUI(); updateAll(); renderLog();
     renderFocus({ tag: '이어하기', title: '복귀', text: `${S.name}의 군 생활을 이어서 진행합니다.`, kind: 'auto' });
     loop();
@@ -833,6 +846,9 @@
     const plan = { study: '전역 후에는 복학해서 학업에 집중할 계획입니다.', job: '전역 후에는 곧바로 취업 준비에 뛰어들 계획입니다.', travel: '전역 후에는 먼저 여행으로 머리를 식힐 계획입니다.' }[S.flags.plan];
     if (plan) lines.push(plan);
     if (S.flags.jinnu) lines.push('진급누락을 한 번 겪었지만, 끝내 계급장을 달고 전역했습니다.');
+    if (S.flags.disc2) lines.push('군기교육을 받고 돌아온 이력이 있습니다. 그 뒤로는 사고 없이 끝까지 마쳤습니다.');
+    else if (S.flags.disc1) lines.push('중대장 면담을 받고 정신을 차린 뒤 남은 복무를 무사히 마쳤습니다.');
+    if (S.flags.medboard) lines.push('마음이 바닥이던 시기에 진료와 상담을 받으며 끝까지 복무를 이어 갔습니다.');
     if (b.id !== 'civil') lines.push('전역 뒤에는 약 8년간 예비군에 편성되고, 이후 만 40세까지 민방위 의무가 이어집니다.');
     const quote = pick([
       '"군대 얘기는 안 한다더니, 사흘 만에 군대 얘기를 시작했습니다."',
@@ -845,7 +861,6 @@
     ]);
     const endWord = b.id === 'civil' ? '완료' : '전역';
 
-    const row = (k, label, name, p) => `<tr><td>${label}</td><td>${name}</td><td class="r">${fmtPct(p)}</td></tr>`;
     $('end-wrap').innerHTML = `
       <div class="cert">
         <div class="cert-head">${b.id === 'civil' ? '소 집 해 제 증' : '전 역 증'}</div>
@@ -864,17 +879,7 @@
         <h3>전역 시점 상태</h3>
         ${STAT_KEYS.map(k => `<div class="bar"><span class="b-name">${STAT_NAME[k]}</span><span class="b-track"><i style="width:${Math.round(st[k])}%;background:${STAT_COLORS[k]}"></i></span><b class="b-val">${Math.round(st[k])}</b></div>`).join('')}
       </div>
-      <div class="card draw-box">
-        <h3>내 뽑기 기록</h3>
-        <table class="draws">
-          ${row('fit', '신체등급', `${S.fit.name} · ${S.fit.label}`, S.probs.fit)}
-          ${b.id === 'civil' ? '' : row('br', '군종', b.name, S.probs.branch)}
-          ${row('u', b.id === 'civil' ? '근무지' : '보직', `${u.name} ${stars(u.g)}`, S.probs.unit)}
-          ${row('c', '분위기', `${c.name} ${stars(c.g)}`, S.probs.culture)}
-          ${row('b', '간부 운', `${bo.name} ${stars(bo.g)}`, S.probs.boss)}
-        </table>
-        <p class="onein">당신과 똑같은 군 생활이 나올 확률 <b>1 / ${Math.round(1 / pAll).toLocaleString('ko-KR')}</b></p>
-      </div>
+      ${drawBoxHtml()}
       ${hls.length ? `<div class="card"><h3>기억에 남는 순간</h3><ul class="plain">${hls.map(h => `<li>${h}</li>`).join('')}</ul></div>` : ''}
       <div class="card"><h3>후일담</h3><ul class="plain">${lines.map(l => `<li>${l}</li>`).join('')}</ul><p class="quote">${quote}</p></div>
       <div class="end-actions">
@@ -884,6 +889,65 @@
         <button class="btn big" id="e-title">처음으로</button>
       </div>`;
     const shareText = `[군대 뽑기] ${S.name} — ${title.name}\n${S.fit.name} → ${b.name} → ${u.name}\n분위기 ${c.name} / 간부 ${bo.name}\n복무 평점 ${grade} · 같은 군 생활이 나올 확률 1/${Math.round(1 / pAll).toLocaleString('ko-KR')}`;
+    bindEndButtons(shareText); showScreen('end');
+  }
+
+  /* 엔딩 공용: 내 뽑기 기록 카드 */
+  function drawBoxHtml() {
+    const u = U(), b = B(), c = C(), bo = BO();
+    const pAll = Object.values(S.probs).reduce((a, p) => a * p, 1);
+    const row = (label, name, p) => `<tr><td>${label}</td><td>${name}</td><td class="r">${fmtPct(p)}</td></tr>`;
+    const rr = S.rerolls || 0;
+    return `<div class="card draw-box">
+        <h3>내 뽑기 기록</h3>
+        <table class="draws">
+          ${row('신체등급', `${S.fit.name} · ${S.fit.label}`, S.probs.fit)}
+          ${b.id === 'civil' ? '' : row('군종', b.name, S.probs.branch)}
+          ${row(b.id === 'civil' ? '근무지' : '보직', `${u.name} ${stars(u.g)}`, S.probs.unit)}
+          ${row('분위기', `${c.name} ${stars(c.g)}`, S.probs.culture)}
+          ${row('간부 운', `${bo.name} ${stars(bo.g)}`, S.probs.boss)}
+        </table>
+        <p class="onein">당신과 똑같은 군 생활이 나올 확률 <b>1 / ${Math.round(1 / pAll).toLocaleString('ko-KR')}</b></p>
+        <p class="onein sub">${rr ? `이 군 생활은 뽑기를 ${rr}번 다시 돌린 끝에 받아들인 결과입니다.` : '뽑기를 한 번도 다시 돌리지 않고 그대로 받아들인 군 생활입니다.'}</p>
+      </div>`;
+  }
+
+  /* 조기 전역(의가사) 엔딩 */
+  function finishEarly(kind) {
+    G.running = false; clearTimeout(G.timer); G.pending = null; Store.del(SAVE_KEY);
+    const u = U(), b = B(), c = C(), bo = BO();
+    const months = Math.max(1, Math.round(S.week * 7 / 30.4375));
+    const dt = dateAt(S.week);
+    if (window.__onFinish) window.__onFinish(S, { score: 0, grade: '-', title: kind, early: true });
+    const d = dexGet(); d.runs++; d.endings[kind] = true; d.branches[S.branch] = true; d.units[S.unitId] = (d.units[S.unitId] || 0) + 1; dexSave(d);
+    const hls = S.highlights.slice().sort(() => rand() - .5).slice(0, 3);
+    const pAll = Object.values(S.probs).reduce((a, p) => a * p, 1);
+    const lines = [
+      `${u.place} ${u.name}에서 ${months}개월을 보낸 뒤, 의무조사를 거쳐 조기 전역하게 되었습니다.`,
+      '끝까지 채우지 못했다고 해서 지나온 시간이 지워지지는 않습니다. 몸과 마음이 먼저입니다.',
+      S.flags.incTotal ? '사고도, 징계도 있었습니다. 그래도 그 시간에서 배운 건 분명히 남았습니다.' : '버틸 수 있는 데까지 버텼고, 멈출 때를 스스로 정했습니다.',
+      '힘든 일이 있다면 혼자 참지 말고 국방헬프콜 1303이나 가까운 상담 기관에 연락하세요. 전역 이후에도 도움을 받을 수 있습니다.',
+    ];
+    $('end-wrap').innerHTML = `
+      <div class="cert early">
+        <div class="cert-ur">특수 엔딩</div>
+        <div class="cert-head">조 기 전 역</div>
+        <div class="cert-name">${S.name}</div>
+        <div class="cert-line">${b.name} · ${u.name} · 의병전역(의가사) · 군번 ${S.serial}</div>
+        <p class="cert-text">${S.name}은(는) ${months}개월간 복무한 뒤 의무조사를 거쳐<br>${dt.y}년 ${dt.m + 1}월부로 조기 전역하였음을 증명합니다.</p>
+        <div class="cert-stamp">전역</div>
+      </div>
+      <div class="card title-box"><small>획득 칭호</small><h2>의가사 전역</h2><p>모든 군 생활이 18개월을 채우는 것은 아닙니다. 이 결말은 도망이 아니라 판단이었습니다.</p></div>
+      ${drawBoxHtml()}
+      ${hls.length ? `<div class="card"><h3>기억에 남는 순간</h3><ul class="plain">${hls.map(h => `<li>${h}</li>`).join('')}</ul></div>` : ''}
+      <div class="card"><h3>그 뒤 이야기</h3><ul class="plain">${lines.map(l => `<li>${l}</li>`).join('')}</ul></div>
+      <div class="end-actions">
+        <button class="btn primary big" id="e-again">다시 뽑기</button>
+        <button class="btn big" id="e-copy">결과 복사</button>
+        <button class="btn big" id="e-dex">뽑기 도감</button>
+        <button class="btn big" id="e-title">처음으로</button>
+      </div>`;
+    const shareText = `[군대 뽑기] ${S.name} — 의가사 전역(조기 전역 엔딩)\n${S.fit.name} → ${b.name} → ${u.name}\n${months}개월 복무 · 같은 군 생활이 나올 확률 1/${Math.round(1 / pAll).toLocaleString('ko-KR')}`;
     bindEndButtons(shareText); showScreen('end');
   }
   function bindEndButtons(shareText) {
@@ -909,7 +973,7 @@
       }).join('')}</div>`;
     }).join('');
     const titles = `<h4>칭호 <small>${Object.keys(d.titles).length}/${TITLES.length}</small></h4><div class="dex-grid">${TITLES.map(t => `<div class="dex-item ${d.titles[t.id] ? 'ok' : ''}"><b>${d.titles[t.id] ? t.name : '???'}</b></div>`).join('')}</div>`;
-    const ends = `<h4>특별 엔딩</h4><div class="dex-grid"><div class="dex-item ${d.endings.exempt ? 'ok rar-ur' : ''}"><b>${d.endings.exempt ? '병역 면제' : '???'}</b></div><div class="dex-item ${d.endings.exempt5 ? 'ok rar-ssr' : ''}"><b>${d.endings.exempt5 ? '전시근로역' : '???'}</b></div></div>`;
+    const ends = `<h4>특별 엔딩</h4><div class="dex-grid"><div class="dex-item ${d.endings.exempt ? 'ok rar-ur' : ''}"><b>${d.endings.exempt ? '병역 면제' : '???'}</b></div><div class="dex-item ${d.endings.exempt5 ? 'ok rar-ssr' : ''}"><b>${d.endings.exempt5 ? '전시근로역' : '???'}</b></div><div class="dex-item ${d.endings.medical ? 'ok rar-sr' : ''}"><b>${d.endings.medical ? '의가사 전역' : '???'}</b></div></div>`;
     $('dex-body').innerHTML = `<p class="dex-sum">플레이 ${d.runs}회 · 최고 평점 ${d.best ? GRADE_ORDER[d.best - 1] : '—'}</p>${groups}${titles}${ends}`;
     $('dex').classList.remove('hidden');
   }
@@ -942,13 +1006,13 @@
     });
     $('c-skip').onclick = () => { G.skipping = true; if (G.paused) setPaused(false); loop(); };
     $('c-auto').onclick = () => {
-      G.auto = !G.auto; $('c-auto').classList.toggle('active', G.auto); Store.set(PREF_KEY, { auto: G.auto, sound: SFX.on });
+      G.auto = !G.auto; $('c-auto').classList.toggle('active', G.auto);
       if (G.auto) {
         if (G.pending && G.pending.phase === 'result') scheduleAuto(afterEvent, 800);
-        else if (G.pending && G.pending.phase === 'choose') { const btns = document.querySelectorAll('#f-choices .choice'); if (btns.length) scheduleAuto(() => pick([...btns]).click(), 800); }
+        else if (G.pending && G.pending.phase === 'choose') { const btns = [...document.querySelectorAll('#f-choices .choice:not(.danger)')]; if (btns.length) scheduleAuto(() => pick(btns).click(), 800); }
       }
     };
-    $('c-sound').onclick = () => { SFX.on = !SFX.on; $('c-sound').classList.toggle('active', SFX.on); Store.set(PREF_KEY, { auto: G.auto, sound: SFX.on }); SFX.init(); };
+    $('c-sound').onclick = () => { SFX.on = !SFX.on; $('c-sound').classList.toggle('active', SFX.on); Store.set(PREF_KEY, { sound: SFX.on }); SFX.init(); };
     $('c-exit').onclick = () => { if (confirm('타이틀로 나갈까요? 진행 상황은 자동 저장됩니다.')) { persist(); goTitle(); } };
     document.addEventListener('keydown', e => {
       if (e.target.tagName === 'INPUT') return;
@@ -963,8 +1027,8 @@
 
   /* ---------- 초기화 ---------- */
   function init() {
-    const pref = Store.get(PREF_KEY, { auto: false, sound: true });
-    G.auto = !!pref.auto; SFX.on = pref.sound !== false;
+    const pref = Store.get(PREF_KEY, { sound: true });
+    G.auto = false; SFX.on = pref.sound !== false; // 자동 결정은 저장하지 않는다(새로 열면 항상 꺼짐)
     titleArt = Art.create($('title-canvas'), { scene: 'bureau', season: 'spring', uni: 'civil' });
     sceneArt = Art.create($('scene'), { scene: 'bureau', season: 'spring', uni: 'civil' });
     sceneArt.stop();
