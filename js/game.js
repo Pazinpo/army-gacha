@@ -61,7 +61,7 @@
   const U = () => UNITS.find(u => u.id === S.unitId);
   const C = () => CULTURES.find(c => c.id === S.cultureId);
   const BO = () => BOSSES.find(b => b.id === S.bossId);
-  const daysTotal = () => Math.round(B().months * 30.4375);
+  const daysTotal = () => Math.round(B().months * 30.4375) + (S.extraWeeks || 0) * 7; // 군기교육 등으로 늘어난 기간 포함
   const rankIdxAt = (w, T) => { const f = w / T; return f < .111 ? 0 : f < .444 ? 1 : f < .778 ? 2 : 3; };
   const rankLabel = () => (B().id === 'civil' ? CIVIL_PHASE : RANK_NAMES)[S.rankIdx];
   /* 자대 배치 전에는 이병이 아니라 훈련병(사회복무는 교육생) */
@@ -382,7 +382,7 @@
     (v.choices || []).forEach(c => {
       const b = document.createElement('button');
       b.className = 'choice' + (c.risky ? ' risky' : '') + (c.cont ? ' cont' : '') + (c.danger ? ' danger' : '');
-      b.innerHTML = `<b>${c.label}</b>${c.risky ? '<small>도전</small>' : ''}`;
+      b.innerHTML = `<b>${c.label}</b>${c.danger ? '<small class="dg">무거운 선택</small>' : c.risky ? '<small>도전</small>' : ''}`;
       b.onclick = () => { SFX.init(); SFX.click(); c.fn(); };
       box.appendChild(b);
     });
@@ -401,6 +401,7 @@
       applyFx(ev.fx);
       if (ev.inc) addInc(ev.inc);
       if (ev.set) Object.assign(S.flags, ev.set);
+      if (ev.extend) { S.extraWeeks = (S.extraWeeks || 0) + ev.extend; S.totalWeeks += ev.extend; } // 전역일이 뒤로 밀린다
       if (ev.flag) S.flags[ev.flag] = true;
       if (typeof ev.hl === 'string') addHighlight(ev.hl);
       if (ev.onShow) ev.onShow(S);
@@ -413,9 +414,9 @@
     if (!G.auto) G.skipping = false;
     renderFocus({
       tag: tagFor(ev), title, text, kind: 'choice',
-      choices: choices.map(c => ({ label: c.t, risky: !!c.p, danger: !!c.endEarly, fn: () => choose(ev, c) })),
+      choices: choices.map(c => ({ label: c.t, risky: !!c.p, danger: !!(c.endEarly || c.danger), fn: () => choose(ev, c) })),
     });
-    scheduleAuto(() => { const safe = choices.filter(c => !c.endEarly); choose(ev, pick(safe.length ? safe : choices)); }, 1500); // 자동 결정은 조기 전역 같은 큰 결정은 대신 내리지 않는다
+    scheduleAuto(() => { const safe = choices.filter(c => !c.endEarly && !c.danger); choose(ev, pick(safe.length ? safe : choices)); }, 1500); // 자동 결정은 조기 전역 같은 큰 결정은 대신 내리지 않는다
     return true;
   }
   /* 사고 누적: 쌓이면 중대장 면담 → 군기교육 → 의무조사로 이어진다 */
@@ -440,6 +441,8 @@
     if (out.set) Object.assign(S.flags, out.set);
     if (out.inc) addInc(out.inc);
     if (ch.endEarly) G.queue.push({ type: 'endEarly', kind: ch.endEarly });
+    const nextId = out.then || ch.then; // 이어지는 이벤트(예: 복귀하지 않으면 미복귀 이틀째)
+    if (nextId) { const nx = EVENTS.find(e => e.id === nextId); if (nx) G.queue.push({ type: 'event', ev: nx }); }
     const hl = out.hl || ch.hl;
     if (hl) addHighlight(hl);
     if (ev.onChoose) ev.onChoose(S, ch);
@@ -481,7 +484,11 @@
     S.lastLeaveWeek = S.week;
     applyFx(p.fx);
     if (ctx.free) addHighlight('자대 배치 후 처음 나간 신병위로휴가, 사회의 공기가 낯설고 달았다');
-    const text = `${p.text} ${pick(RETURN_LINES)}`;
+    // 마음이 바닥이거나 곰신과 이별했거나 사고가 이어진 사람은 휴가 마지막 밤에 복귀를 망설일 수 있다
+    const eve = B().id !== 'civil' && B().id !== 'sangun' && (S.flags.eveCount || 0) < 2 &&
+      (S.stats.mind <= 40 || S.flags.breakup || (S.flags.incidents || 0) >= 2) && rand() < .6;
+    const text = eve ? p.text : `${p.text} ${pick(RETURN_LINES)}`;
+    if (eve) { S.flags.eveCount = (S.flags.eveCount || 0) + 1; G.queue.push({ type: 'event', ev: EVENTS.find(e => e.id === 'x_return_eve') }); }
     addLog(`${ctx.label} ${used}일 — ${text}`, !!ctx.free);
     G.pending = { ev, phase: 'result' };
     renderFocus({
@@ -922,22 +929,44 @@
     const d = dexGet(); d.runs++; d.endings[kind] = true; d.branches[S.branch] = true; d.units[S.unitId] = (d.units[S.unitId] || 0) + 1; dexSave(d);
     const hls = S.highlights.slice().sort(() => rand() - .5).slice(0, 3);
     const pAll = Object.values(S.probs).reduce((a, p) => a * p, 1);
-    const lines = [
-      `${u.place} ${u.name}에서 ${months}개월을 보낸 뒤, 의무조사를 거쳐 조기 전역하게 되었습니다.`,
-      '끝까지 채우지 못했다고 해서 지나온 시간이 지워지지는 않습니다. 몸과 마음이 먼저입니다.',
-      S.flags.incTotal ? '사고도, 징계도 있었습니다. 그래도 그 시간에서 배운 건 분명히 남았습니다.' : '버틸 수 있는 데까지 버텼고, 멈출 때를 스스로 정했습니다.',
-      '힘든 일이 있다면 혼자 참지 말고 국방헬프콜 1303이나 가까운 상담 기관에 연락하세요. 전역 이후에도 도움을 받을 수 있습니다.',
-    ];
+    const ENDINGS = {
+      medical: {
+        badge: '특수 엔딩', head: '조 기 전 역', line: '의병전역(의가사)', stamp: '전역',
+        text: `${S.name}은(는) ${months}개월간 복무한 뒤 의무조사를 거쳐<br>${dt.y}년 ${dt.m + 1}월부로 조기 전역하였음을 증명합니다.`,
+        titleName: '의가사 전역', titleText: '모든 군 생활이 18개월을 채우는 것은 아닙니다. 이 결말은 도망이 아니라 판단이었습니다.',
+        share: '의가사 전역(조기 전역 엔딩)',
+        lines: [
+          `${u.place} ${u.name}에서 ${months}개월을 보낸 뒤, 의무조사를 거쳐 조기 전역하게 되었습니다.`,
+          '끝까지 채우지 못했다고 해서 지나온 시간이 지워지지는 않습니다. 몸과 마음이 먼저입니다.',
+          S.flags.incTotal ? '사고도, 징계도 있었습니다. 그래도 그 시간에서 배운 건 분명히 남았습니다.' : '버틸 수 있는 데까지 버텼고, 멈출 때를 스스로 정했습니다.',
+          '힘든 일이 있다면 혼자 참지 말고 국방헬프콜 1303이나 가까운 상담 기관에 연락하세요. 전역 이후에도 도움을 받을 수 있습니다.',
+        ],
+      },
+      desertion: {
+        badge: '게임 오버', head: '군 무 이 탈', line: '영창행(군무이탈)', stamp: '영창',
+        text: `${S.name}은(는) ${months}개월 차 휴가 뒤 부대로 복귀하지 않았습니다.<br>이후 군사경찰에 인계되어 구속과 재판 절차가 이어졌습니다.`,
+        titleName: '영창행', titleText: '돌아가기 어려운 순간에도 도움을 청하는 길은 있었습니다. 선택의 무게가 가장 무거웠던 결말입니다.',
+        share: '영창행(군무이탈 엔딩)',
+        lines: [
+          `${u.place} ${u.name}에서 ${months}개월을 보낸 뒤, 휴가 복귀 시간을 지키지 못했습니다.`,
+          '병 징계의 "영창"은 2020년 8월에 폐지되고 군기교육으로 바뀌었습니다. 하지만 군무이탈은 징계가 아니라 형사처벌 대상이어서, 이 엔딩은 "영창행"이라는 속어를 빌렸을 뿐 실제로는 구속과 재판으로 이어집니다.',
+          '자진 복귀가 처벌 결과에서 가장 큰 차이를 만든다고들 합니다. 이 게임의 설명은 실제 판결을 대신하지 않습니다.',
+          '혼자 버티다 한계에 닿기 전에 가족, 간부, 상담관, 국방헬프콜 1303에 먼저 손을 내밀어 보세요.',
+        ],
+      },
+    };
+    const E = ENDINGS[kind] || ENDINGS.medical;
+    const lines = E.lines;
     $('end-wrap').innerHTML = `
       <div class="cert early">
-        <div class="cert-ur">특수 엔딩</div>
-        <div class="cert-head">조 기 전 역</div>
+        <div class="cert-ur">${E.badge}</div>
+        <div class="cert-head">${E.head}</div>
         <div class="cert-name">${S.name}</div>
-        <div class="cert-line">${b.name} · ${u.name} · 의병전역(의가사) · 군번 ${S.serial}</div>
-        <p class="cert-text">${S.name}은(는) ${months}개월간 복무한 뒤 의무조사를 거쳐<br>${dt.y}년 ${dt.m + 1}월부로 조기 전역하였음을 증명합니다.</p>
-        <div class="cert-stamp">전역</div>
+        <div class="cert-line">${b.name} · ${u.name} · ${E.line} · 군번 ${S.serial}</div>
+        <p class="cert-text">${E.text}</p>
+        <div class="cert-stamp">${E.stamp}</div>
       </div>
-      <div class="card title-box"><small>획득 칭호</small><h2>의가사 전역</h2><p>모든 군 생활이 18개월을 채우는 것은 아닙니다. 이 결말은 도망이 아니라 판단이었습니다.</p></div>
+      <div class="card title-box"><small>획득 칭호</small><h2>${E.titleName}</h2><p>${E.titleText}</p></div>
       ${drawBoxHtml()}
       ${hls.length ? `<div class="card"><h3>기억에 남는 순간</h3><ul class="plain">${hls.map(h => `<li>${h}</li>`).join('')}</ul></div>` : ''}
       <div class="card"><h3>그 뒤 이야기</h3><ul class="plain">${lines.map(l => `<li>${l}</li>`).join('')}</ul></div>
@@ -947,7 +976,7 @@
         <button class="btn big" id="e-dex">뽑기 도감</button>
         <button class="btn big" id="e-title">처음으로</button>
       </div>`;
-    const shareText = `[군대 뽑기] ${S.name} — 의가사 전역(조기 전역 엔딩)\n${S.fit.name} → ${b.name} → ${u.name}\n${months}개월 복무 · 같은 군 생활이 나올 확률 1/${Math.round(1 / pAll).toLocaleString('ko-KR')}`;
+    const shareText = `[군대 뽑기] ${S.name} — ${E.share}\n${S.fit.name} → ${b.name} → ${u.name}\n${months}개월 복무 · 같은 군 생활이 나올 확률 1/${Math.round(1 / pAll).toLocaleString('ko-KR')}`;
     bindEndButtons(shareText); showScreen('end');
   }
   function bindEndButtons(shareText) {
@@ -973,7 +1002,7 @@
       }).join('')}</div>`;
     }).join('');
     const titles = `<h4>칭호 <small>${Object.keys(d.titles).length}/${TITLES.length}</small></h4><div class="dex-grid">${TITLES.map(t => `<div class="dex-item ${d.titles[t.id] ? 'ok' : ''}"><b>${d.titles[t.id] ? t.name : '???'}</b></div>`).join('')}</div>`;
-    const ends = `<h4>특별 엔딩</h4><div class="dex-grid"><div class="dex-item ${d.endings.exempt ? 'ok rar-ur' : ''}"><b>${d.endings.exempt ? '병역 면제' : '???'}</b></div><div class="dex-item ${d.endings.exempt5 ? 'ok rar-ssr' : ''}"><b>${d.endings.exempt5 ? '전시근로역' : '???'}</b></div><div class="dex-item ${d.endings.medical ? 'ok rar-sr' : ''}"><b>${d.endings.medical ? '의가사 전역' : '???'}</b></div></div>`;
+    const ends = `<h4>특별 엔딩</h4><div class="dex-grid"><div class="dex-item ${d.endings.exempt ? 'ok rar-ur' : ''}"><b>${d.endings.exempt ? '병역 면제' : '???'}</b></div><div class="dex-item ${d.endings.exempt5 ? 'ok rar-ssr' : ''}"><b>${d.endings.exempt5 ? '전시근로역' : '???'}</b></div><div class="dex-item ${d.endings.medical ? 'ok rar-sr' : ''}"><b>${d.endings.medical ? '의가사 전역' : '???'}</b></div><div class="dex-item ${d.endings.desertion ? 'ok rar-r' : ''}"><b>${d.endings.desertion ? '영창행(군무이탈)' : '???'}</b></div></div>`;
     $('dex-body').innerHTML = `<p class="dex-sum">플레이 ${d.runs}회 · 최고 평점 ${d.best ? GRADE_ORDER[d.best - 1] : '—'}</p>${groups}${titles}${ends}`;
     $('dex').classList.remove('hidden');
   }
