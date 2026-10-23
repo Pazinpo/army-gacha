@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>군대 뽑기 — 18개월, 운 100% 시뮬레이터</title>
+<meta name="description" content="신체등급부터 군종, 보직, 간부 운까지 전부 뽑기로 정해지는 군 생활 시뮬레이션 웹 게임">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- ===== 타이틀 ===== -->
+  <section id="screen-title" class="screen">
+    <div class="title-wrap">
+      <div class="title-art"><canvas id="title-canvas" width="192" height="108"></canvas></div>
+      <div class="title-body">
+        <p class="eyebrow">대한민국 건아 시뮬레이터 · 베타</p>
+        <h1><span>군대</span> 뽑기</h1>
+        <p class="lead">신체등급부터 군종, 보직, 간부 운까지.<br>전부 뽑기로 정해지는 단 한 번의 군 생활을 끝까지 살아봅니다.</p>
+        <div class="title-form">
+          <label for="inp-name">이름 (비워 두면 랜덤)</label>
+          <input id="inp-name" maxlength="6" placeholder="예: 김민준" autocomplete="off">
+          <div class="title-btns">
+            <button id="btn-start" class="btn primary big">입대 뽑기 시작</button>
+            <button id="btn-resume" class="btn big hidden">이어서 하기</button>
+            <button id="btn-dex" class="btn big">뽑기 도감</button>
+          </div>
+        </div>
+        <ul class="notes">
+          <li>복무기간은 육군·해병·카투사·상근 18개월, 해군 20개월, 공군·사회복무 21개월 기준입니다.</li>
+          <li>확률과 수치는 게임용 값이에요. 실제 병역 판정·배치 방식과 다릅니다.</li>
+          <li>힘든 일이 있다면 혼자 참지 마세요. 국방헬프콜 <b>1303</b>.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 게임 ===== -->
+  <section id="screen-game" class="screen hidden">
+    <header class="topbar">
+      <div class="top-row">
+        <div class="brand"><span>군대</span> 뽑기</div>
+        <div class="dday" title="전역까지 남은 날"><small id="dd-label">전역까지</small><b id="dd-num">D-000</b></div>
+        <div class="top-meta"><b id="top-rank">훈련 전</b><span id="top-date">2026년</span></div>
+      </div>
+      <div class="progress"><i id="prog"></i><em id="prog-promo1"></em><em id="prog-promo2"></em><em id="prog-promo3"></em></div>
+    </header>
+
+    <div class="controls" id="controls">
+      <button class="btn sm" id="c-pause">⏸ 멈춤</button>
+      <button class="btn sm sp active" data-sp="1">1×</button>
+      <button class="btn sm sp" data-sp="2">2×</button>
+      <button class="btn sm sp" data-sp="4">4×</button>
+      <button class="btn sm sp" data-sp="8">8×</button>
+      <button class="btn sm" id="c-skip">다음 결정까지 »</button>
+      <button class="btn sm toggle" id="c-auto">자동 결정</button>
+      <button class="btn sm toggle" id="c-sound">♪ 소리</button>
+      <button class="btn sm" id="c-exit">나가기</button>
+    </div>
+
+    <div class="layout">
+      <aside class="side">
+        <div class="idcard card">
+          <div class="id-head"><span>신원 기록</span><span id="id-serial">26-7000000</span></div>
+          <div class="id-body">
+            <canvas id="id-photo" width="54" height="66"></canvas>
+            <div class="id-info">
+              <h2 id="id-name">이름</h2>
+              <dl>
+                <dt>소속</dt><dd id="id-unit">—</dd>
+                <dt>계급</dt><dd id="id-rank">—</dd>
+                <dt>입대</dt><dd id="id-enlist">—</dd>
+                <dt>신체</dt><dd id="id-fit">—</dd>
+                <dt>배경</dt><dd id="id-major">—</dd>
+                <dt>곰신</dt><dd id="id-gf">—</dd>
+              </dl>
+            </div>
+          </div>
+          <div class="id-tags" id="id-tags"></div>
+        </div>
+
+        <div class="stats card">
+          <h3>상태 <small>0–100</small></h3>
+          <div id="stat-bars"></div>
+          <div class="wallet">
+            <div><small>통장(전역 목돈)</small><b id="w-money">0만원</b></div>
+            <div><small>남은 휴가</small><b id="w-leave">0일</b></div>
+            <div><small>재뽑기권</small><b id="w-ticket">🎫 1</b></div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="main">
+        <div class="stage card">
+          <canvas id="scene" width="192" height="108"></canvas>
+          <div class="caption" id="caption">—</div>
+        </div>
+
+        <div class="focus card" id="focus">
+          <div class="f-head"><span class="tag" id="f-tag">상황</span><h3 id="f-title">—</h3></div>
+          <p class="f-text" id="f-text"></p>
+          <div class="f-chips" id="f-chips"></div>
+          <p class="f-result hidden" id="f-result"></p>
+          <div class="choices" id="f-choices"></div>
+        </div>
+
+        <div class="logcard card">
+          <div class="log-head"><h3>군 생활 기록</h3><small id="log-count"></small></div>
+          <ul id="log"></ul>
+        </div>
+      </main>
+    </div>
+  </section>
+
+  <!-- ===== 엔딩 ===== -->
+  <section id="screen-end" class="screen hidden">
+    <div class="end-wrap" id="end-wrap"></div>
+  </section>
+
+  <!-- ===== 뽑기 연출 ===== -->
+  <div id="gacha" class="overlay hidden">
+    <div class="gacha-card" id="gacha-card">
+      <div class="g-head"><span id="g-step" class="g-step">STEP</span><h2 id="g-title">뽑기</h2><p id="g-sub"></p></div>
+      <div class="g-reel" id="g-reel"><div id="g-reel-text">?</div></div>
+      <div class="g-result hidden" id="g-result"></div>
+      <div class="g-actions">
+        <button id="g-roll" class="btn primary big pulse">뽑기!</button>
+        <button id="g-accept" class="btn primary big hidden">이대로 간다 ▶</button>
+        <button id="g-reroll" class="btn big hidden">🎫 다시 뽑기</button>
+      </div>
+    </div>
+    <div id="confetti"></div>
+  </div>
+
+  <!-- ===== 도감 ===== -->
+  <div id="dex" class="overlay hidden">
+    <div class="dex-card">
+      <div class="dex-head"><h2>뽑기 도감</h2><button class="btn sm" id="dex-close">닫기</button></div>
+      <div id="dex-body"></div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/art.js"></script>
+<script src="js/game.js"></script>
+</body>
+</html>
