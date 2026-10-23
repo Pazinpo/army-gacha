@@ -231,6 +231,10 @@ h1 span { color: var(--accent); }
 .quote { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); color: var(--muted); font-size: 13px; font-style: italic; }
 .end-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; margin-top: 8px; }
 
+.site-foot { max-width: 1120px; margin: 0 auto; padding: 18px 20px 44px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12.5px; line-height: 1.7; text-align: center; }
+.site-foot p { margin: 2px 0; word-break: keep-all; }
+.site-foot a { color: var(--olive-2); text-decoration: underline; text-underline-offset: 2px; }
+.site-foot b { color: #4a5239; }
 .toast { position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%); background: #1d2618; color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; z-index: 200; box-shadow: 0 6px 20px rgba(0,0,0,.3); }
 
 /* ---------- 반응형 ---------- */

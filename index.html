@@ -5,6 +5,24 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>군대 뽑기 — 18개월, 운 100% 시뮬레이터</title>
 <meta name="description" content="신체등급부터 군종, 보직, 간부 운까지 전부 뽑기로 정해지는 군 생활 시뮬레이션 웹 게임">
+<meta name="theme-color" content="#34421f">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon-32.png" type="image/png" sizes="32x32">
+<link rel="icon" href="favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="canonical" href="https://pazinpo.github.io/army-gacha/">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="군대 뽑기">
+<meta property="og:title" content="군대 뽑기 — 18개월, 운 100% 시뮬레이터">
+<meta property="og:description" content="신체등급부터 군종, 보직, 간부 운까지 전부 뽑기. 당신의 군 생활은 어떻게 흘러갈까?">
+<meta property="og:url" content="https://pazinpo.github.io/army-gacha/">
+<meta property="og:image" content="https://pazinpo.github.io/army-gacha/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="군대 뽑기 — 18개월, 운 100% 시뮬레이터">
+<meta name="twitter:description" content="신체등급부터 군종, 보직, 간부 운까지 전부 뽑기. 당신의 군 생활은 어떻게 흘러갈까?">
+<meta name="twitter:image" content="https://pazinpo.github.io/army-gacha/og.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
@@ -33,6 +51,7 @@
         <ul class="notes">
           <li>복무기간은 육군·해병·카투사·상근 18개월, 해군 20개월, 공군·사회복무 21개월 기준입니다.</li>
           <li>확률과 수치는 게임용 값이에요. 실제 병역 판정·배치 방식과 다릅니다.</li>
+          <li>개인이 만든 <b>비공식</b> 가상 시뮬레이션이며 국방부·병무청·각 군과 무관합니다.</li>
           <li>힘든 일이 있다면 혼자 참지 마세요. 국방헬프콜 <b>1303</b>.</li>
         </ul>
       </div>
@@ -144,6 +163,12 @@
   </div>
 
   <div id="toast" class="toast hidden"></div>
+
+  <footer class="site-foot">
+    <p>이 게임은 개인이 만든 <b>비공식 가상 시뮬레이션</b>이며 국방부·병무청·각 군 및 어떤 기관과도 무관합니다. 확률·수치·일부 설정은 게임용이라 실제와 다를 수 있어요.</p>
+    <p>틀린 군대 디테일이나 오류는 <a href="https://github.com/Pazinpo/army-gacha/issues/new?title=%5B%EC%A0%9C%EB%B3%B4%5D%20&body=%EC%96%B4%EB%96%A4%20%EB%B6%80%EB%B6%84%EC%9D%B4%20%ED%8B%80%EB%A0%B8%EA%B1%B0%EB%82%98%20%EB%B9%A0%EC%A1%8C%EB%82%98%EC%9A%94%3F%0A%0A%0A%EC%8B%A4%EC%A0%9C%EB%A1%9C%EB%8A%94%20%EC%96%B4%EB%96%A4%EA%B0%80%EC%9A%94%3F%20(%EB%B3%B5%EB%AC%B4%20%EC%8B%9C%EA%B8%B0%C2%B7%EA%B5%B0%EC%A2%85%C2%B7%EB%B6%80%EB%8C%80%20%EC%9C%A0%ED%98%95%EC%9D%84%20%EC%95%8C%EB%A0%A4%20%EC%A3%BC%EC%8B%9C%EB%A9%B4%20%EC%A2%8B%EC%95%84%EC%9A%94)%0A%0A%0A%EC%B0%B8%EA%B3%A0%ED%95%9C%20%EA%B3%B3%EC%9D%B4%20%EC%9E%88%EB%8B%A4%EB%A9%B4%20%EB%A7%81%ED%81%AC%3A%0A%0A%0A%E2%80%BB%20%EC%9D%B4%20%EA%B8%80%EC%9D%80%20%EA%B3%B5%EA%B0%9C%EB%A1%9C%20%EB%82%A8%EC%8A%B5%EB%8B%88%EB%8B%A4.%20%EC%9D%B4%EB%A6%84%C2%B7%EB%B6%80%EB%8C%80%EB%AA%85%C2%B7%EC%97%B0%EB%9D%BD%EC%B2%98%20%EA%B0%99%EC%9D%80%20%EA%B0%9C%EC%9D%B8%EC%A0%95%EB%B3%B4%EB%8A%94%20%EC%A0%81%EC%A7%80%20%EB%A7%88%EC%84%B8%EC%9A%94." target="_blank" rel="noopener">여기로 제보</a>해 주세요 (GitHub에 공개로 남으니 개인정보는 적지 마세요) · <a href="https://github.com/Pazinpo/army-gacha" target="_blank" rel="noopener">소스 코드</a></p>
+    <p>힘든 일이 있다면 혼자 참지 마세요. 국방헬프콜 <b>1303</b></p>
+  </footer>
 </div>
 
 <script src="js/data.js"></script>
